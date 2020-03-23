@@ -1,12 +1,10 @@
-from gym import spaces
 import gym
+from gym import spaces
 import random
 import tkinter as tk
-import time
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
 from matplotlib import style
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -30,7 +28,6 @@ class QueueEnv(gym.Env):
         self.QL_th = QL_th
         self.n_jobs = 0
         self.ql_vec = [0]
-        # self.ql_vec = []
         self.t_arr = 0  # First arrival time is 0 by default
         self.t_vec = [0.0]
         self.render_initiate = True
@@ -44,6 +41,8 @@ class QueueEnv(gym.Env):
         self.accepted_job_ind_vec = []
         self.waiting_vec = []
         self.job_index = 1
+        self.cnt = 1
+        self.MAX_STEPS = 10000
         self.last_entered_job = 0
 
 
@@ -75,22 +74,16 @@ class QueueEnv(gym.Env):
                  However, official evaluations of your agent are not allowed to
                  use this for learning.
         """
-        #         self._take_action(action)
-        #         reward = self._get_reward()
-        #         ob = self._get_state()
-        #         return ob, reward, self.is_banana_sold, {}
         self._take_action(action)
         reward = self._get_reward(action)
         ob = self.n_jobs
-        done = True if self.ql > self.QL_th else False
+        done = False if self.cnt < self.MAX_STEPS else True
+        self.cnt += 1
         return ob, reward, done, {}
-        # print('new customer **************')
-        # print('t_arr = ', self.t_arr)
 
     def _take_action(self, action):
-        # arrVec = [2,3,5,6,7,9,10,11,13,14]
-        # servVec = [5,10,2,6,10,2,8,5,6,7,5]
-        self.ql = max(self.n_jobs - self.n_servers, 0)  # Queue length before taking the action (upon job arrival)
+        # Queue length before taking the action (upon job arrival)
+        self.ql = max(self.n_jobs - self.n_servers, 0)
         if action:
             if self.n_jobs < self.n_servers:
                 t_ent = self.t_arr
@@ -105,21 +98,14 @@ class QueueEnv(gym.Env):
                 t_ent = max(self.t_arr, t_available[picked_server])
                 self.assigned_servers = np.append(self.assigned_servers, picked_server)
 
-            # t_s = servVec[self.job_index-1]
-            t_s = self._service_gen(t_ent)
+            t_s = self._service_gen()
             self.t_fin = np.append(self.t_fin, t_ent + t_s)
             self.n_jobs += 1
-            # **********************************
             self.job_dict[self.job_index] = {'Ta': self.t_arr, 'Td': t_ent + t_s, 'Ts': t_s, 'Tw': t_ent-self.t_arr,
                                              'Ba': self.ql}
-            # **********************************
             self.last_entered_job = self.job_index
-        # else:
-        #     # **********************************
-        #     self.job_dict[self.job_index] = {'Ta': self.t_arr}
+
         self.last_t_arr = self.t_arr
-        # print(self.last_t_arr)
-        # self.t_arr = arrVec[self.job_index-1]
         self.t_arr += self._inter_arr_gen()
         served_jobs_ind = np.arange(len(self.t_fin))[np.array(self.t_fin) < self.t_arr]
         if len(np.array(env.t_fin) < env.t_arr):
@@ -135,7 +121,7 @@ class QueueEnv(gym.Env):
         lambda_a = self.n_servers * self.rho
         return np.random.exponential(1 / lambda_a)
 
-    def _service_gen(self, t_e):
+    def _service_gen(self):
         lambda_s = 1.0
         return np.random.exponential(1 / lambda_s)
 
@@ -307,11 +293,8 @@ class Agent():
         if self.isCont:
             action = np.random.uniform(self.action_low, self.action_high, self.action_shape)
         else:
-            #         pole_angle = state[2]
-            #         action = 0 if pole_angle < 0 else 1
             action = random.choice(range(env.action_space.n))
         return action
-
 
 class QAgent(Agent):
     def __init__(self, env, discount_rate=0.97, learning_rate=0.01):
@@ -346,30 +329,22 @@ class QAgent(Agent):
             self.eps *= 0.99
 
 
-render_flag = True
-env = QueueEnv(2, 3, 10)
-agent = QAgent(env)
-ep_len = 5
-total_reward = np.zeros(ep_len)
-for ep in range(ep_len):
-    state = env.reset()
-    done = False
-    while not done:
-    #     action = env.action_space.sample()
-        action = agent.get_action(state)
-        next_state, reward, done, info = env.step(1)
-        agent.train((state, action, next_state, reward, done))
-        state = next_state
-        total_reward[ep] += reward
-        print("s:", state, "a:", action)
-        print("Episode: {}, Total reward: {}, eps:{}".format(ep, total_reward[ep], agent.eps))
-        if render_flag:
-            env.render()
-        # time.sleep(0.05)
+#******************  Demo  ********************
+#**********************************************
 
-plt.plot(total_reward)
-plt.xlabel('Iteration')
-plt.ylabel('Total reward')
+render_flag = True
+env = QueueEnv(3, 3, 10)
+agent = QAgent(env)
+state = env.reset()
+done = False
+while not done:
+    action = agent.get_action(state)
+    next_state, reward, done, info = env.step(action)
+    agent.train((state, action, next_state, reward, done))
+    state = next_state
+    print("s:", state, "a:", action)
+    if render_flag:
+        env.render()
+
 if render_flag:
     env.canvas.mainloop()
-
